@@ -3,6 +3,29 @@
 # Define the default IDE path
 DEFAULT_IDE_PATH=~/.local/share/JetBrains/Toolbox/scripts/phpstorm1
 
+execute_command() {
+    # For dry run, just show the command to be executed
+    if [ "$DRY_RUN" = true ]; then
+        echo "[DRY RUN] Would execute: $*"
+    # Execute the command
+    else
+        "$@"
+    fi
+}
+
+write_plugins_content() {
+    # For dry run, show what would be written
+    if [ "$DRY_RUN" = true ]; then
+        echo "[DRY RUN] Would write the following content to $CONFIG_PLUGINS_FILE:"
+        echo "---BEGIN CONTENT---"
+        echo "$disabled_plugins_content"
+        echo "---END CONTENT---"
+    # Write content into file
+    else
+        echo "$disabled_plugins_content" > "$CONFIG_PLUGINS_FILE"
+    fi
+}
+
 # Get the profile name if provided (first positional argument)
 if [[ "$1" != -* && -n "$1" ]]; then
     PROFILE_NAME="$1"
@@ -14,7 +37,7 @@ while [[ "$#" -gt 0 ]]; do
     case $1 in
         -p|--project) PROJECT_PATH="$2"; shift ;;
         -i|--ide-path) IDE_PATH="$2"; shift ;;
-        --dry-run) DRY_RUN=true ;;
+        -D|--dry-run) DRY_RUN=true ;;
         *) echo "Unknown parameter: $1"; exit 1 ;;
     esac
     shift
@@ -51,45 +74,60 @@ if [ ! -d "${IDE_CONFIGURATION_PATH/#\~/$HOME}" ]; then
     exit 1
 fi
 
-# Determine which disabled_plugins file to use
+ENABLE_PLUGINS_PATH="$PROJECT_PATH/enable_plugins.txt"
+
+# Determine which disabled_plugins paths to use
 if [ -n "$PROFILE_NAME" ]; then
     DISABLED_PLUGINS_PATH="$SCRIPT_PATH/disabled_plugins/${PROFILE_NAME}_disabled_plugins.txt"
 else
     DISABLED_PLUGINS_PATH="$PROJECT_PATH/disabled_plugins.txt"
 fi
 
-# Check if disabled_plugins.txt exists in the project directory
+# Check if disabled_plugins.txt exists for current configuration
 if [ ! -f "$DISABLED_PLUGINS_PATH" ]; then
-    echo "$DISABLED_PLUGINS_PATH not found in"
-    exit 1
+    # If there are no disabled plugins provided, we need to use the default IDE enable_plugins.txt file
+    DEFAULT_DISABLED_PLUGINS_PATH="$IDE_CONFIGURATION_PATH/disabled_plugins.txt"
+    if [ ! -f "$DEFAULT_DISABLED_PLUGINS_PATH" ]; then
+        echo "No disabled_plugins.txt found. Searched in: $DEFAULT_DISABLED_PLUGINS_PATH and $DISABLED_PLUGINS_PATH"
+        exit 1
+    fi
+    DISABLED_PLUGINS_PATH="$DEFAULT_DISABLED_PLUGINS_PATH"
 fi
 
-# Function to handle file operations
-execute_command() {
-    if [ "$DRY_RUN" = true ]; then
-        echo "[DRY RUN] Would execute: $*"
-    else
-        "$@"
-    fi
-}
+# Read disabled plugins into array
+mapfile -t disabled_plugins < "$DISABLED_PLUGINS_PATH"
+
+# If enable_plugins.txt exists, remove those plugins from array
+if [ -n "$ENABLE_PLUGINS_PATH" ] && [ -f "$ENABLE_PLUGINS_PATH" ]; then
+    while IFS= read -r enable_plugin; do
+        if [ -n "$enable_plugin" ]; then
+            # Filter out the enabled plugin from the array
+            disabled_plugins=("${disabled_plugins[@]/#$enable_plugin*/}")
+        fi
+    done < "$ENABLE_PLUGINS_PATH"
+fi
+
+# Remove empty elements and create final content
+disabled_plugins_content=$(printf '%s\n' "${disabled_plugins[@]}" | grep -v '^$')
 
 # Check if disabled_plugins.txt exists in IDE configuration directory
 CONFIG_PLUGINS_FILE="${IDE_CONFIGURATION_PATH/#\~/$HOME}/disabled_plugins.txt"
 if [ -f "$CONFIG_PLUGINS_FILE" ]; then
-    # Compare files if config file exists
-    if ! cmp -s "$DISABLED_PLUGINS_PATH" "$CONFIG_PLUGINS_FILE"; then
-        # Files are different - create backup and copy new file
-        execute_command mv "$CONFIG_PLUGINS_FILE" "${CONFIG_PLUGINS_FILE}.backup"
+    # Compare content instead of files
+    current_content=$(cat "$CONFIG_PLUGINS_FILE")
+    if [ "$disabled_plugins_content" != "$current_content" ]; then
+        # Content is different - create backup and write new content
+        execute_command cp "$CONFIG_PLUGINS_FILE" "${CONFIG_PLUGINS_FILE}.backup"
         [ "$DRY_RUN" != true ] && echo "Created backup of existing disabled_plugins.txt"
-        execute_command cp "$DISABLED_PLUGINS_PATH" "$CONFIG_PLUGINS_FILE"
-        [ "$DRY_RUN" != true ] && echo "Copied $DISABLED_PLUGINS_PATH to IDE configuration directory"
+        write_plugins_content
+        [ "$DRY_RUN" != true ] && echo "Updated disabled plugins in IDE configuration directory"
     else
         echo "disabled_plugins.txt is already up to date"
     fi
 else
-    # Config file doesn't exist, copy it
-    execute_command cp "$DISABLED_PLUGINS_PATH" "$CONFIG_PLUGINS_FILE"
-    [ "$DRY_RUN" != true ] && echo "Copied new $DISABLED_PLUGINS_PATH to IDE configuration directory"
+    # Config file doesn't exist, create it
+    write_plugins_content
+    [ "$DRY_RUN" != true ] && echo "Created new disabled_plugins.txt in IDE configuration directory"
 fi
 
 # Run IDE with provided project path
@@ -98,6 +136,4 @@ if [ "$DRY_RUN" = true ]; then
 else
     "$IDE_PATH" "$PROJECT_PATH"
 fi
-
-
 
