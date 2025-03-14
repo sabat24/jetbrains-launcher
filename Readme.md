@@ -2,7 +2,8 @@
 
 This repository contains scripts to launch PhpStorm with customized plugin configurations.
 
-The main goal is to solve the problem described on [YouTrack](https://youtrack.jetbrains.com/issue/IJPL-6073/Allow-to-enable-disable-plugins-per-project-by-creating-own-plugins-lists)
+The main goal is to solve the problem described
+on [YouTrack](https://youtrack.jetbrains.com/issue/IJPL-6073/Allow-to-enable-disable-plugins-per-project-by-creating-own-plugins-lists)
 
 ## Files
 
@@ -77,7 +78,7 @@ a specific plugin configuration. If you do not specify any profile launcher will
 You can also use `launcher.sh` directly with additional options:
 
 ```bash
-./launcher.sh [profile_name] [-p project_path] [-i ide_path] [--dry-run]
+./launcher.sh [profile_name] [-p project_path] [-i ide_path] [-D dry-run]
 ```
 
 Parameters:
@@ -85,7 +86,7 @@ Parameters:
 - `profile_name`: (Optional) Name of the plugin profile to use
 - `-p, --project`: Path to the project directory
 - `-i, --ide-path`: Custom path to PhpStorm executable
-- `--dry-run`: Show commands that would be executed without making any changes
+- `-D, --dry-run`: Show commands that would be executed without making any changes
 
 Examples:
 
@@ -97,6 +98,14 @@ Examples:
 
 If you provide a profile_name then `disabled_plugins.txt` file from project directory (if file exists there) will be
 ignored.
+
+### Enable plugins per project
+
+If you want to keep some plugins enabled only per project, you can create a file named `enable_plugins.txt` in the
+project directory. File should contain a list of plugins which will be removed from `disabled_plugins.txt` at the end of
+the process.
+
+It can be useful if you want to keep some plugins enabled only for specific project.
 
 ## Paths Configurations
 
