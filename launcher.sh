@@ -26,11 +26,12 @@ write_plugins_content() {
     fi
 }
 
-# Get the profile name if provided (first positional argument)
-if [[ "$1" != -* && -n "$1" ]]; then
-    PROFILE_NAME="$1"
+# Collect all non-flag arguments
+PROFILE_NAMES=()
+while [[ $# -gt 0 && "$1" != -* ]]; do
+    PROFILE_NAMES+=("$1")
     shift
-fi
+done
 
 # Parse named arguments
 while [[ "$#" -gt 0 ]]; do
@@ -60,10 +61,9 @@ version_output=$($IDE_PATH --version)
 # Extract the first line using awk
 first_line=$(echo "$version_output" | awk 'NR==1')
 
-# Remove space between IDE name and version number, then remove the last .3
+# Remove space between IDE name and version number, then remove the last version number
 processed_version=$(echo "$first_line" | sed 's/ //' | sed 's/\.[0-9]*$//')
 
-# Assign to variable
 IDE_VERSION="$processed_version"
 
 IDE_CONFIGURATION_PATH="~/.config/JetBrains/$IDE_VERSION"
@@ -74,38 +74,53 @@ if [ ! -d "${IDE_CONFIGURATION_PATH/#\~/$HOME}" ]; then
     exit 1
 fi
 
-ENABLE_PLUGINS_PATH="$PROJECT_PATH/enable_plugins.txt"
+# Define array of enable plugins paths
+ENABLE_PLUGINS_PATHS=()
+if [ -f "$PROJECT_PATH/enable_plugins.txt" ]; then
+    ENABLE_PLUGINS_PATHS+=("$PROJECT_PATH/enable_plugins.txt")
+fi
 
-# Determine which disabled_plugins paths to use
-if [ -n "$PROFILE_NAME" ]; then
-    DISABLED_PLUGINS_PATH="$SCRIPT_PATH/disabled_plugins/${PROFILE_NAME}_disabled_plugins.txt"
+# Initialize empty array for all disabled plugins
+disabled_plugins=()
+
+# Determine which disabled_plugins paths to use and load them
+if [ ${#PROFILE_NAMES[@]} -gt 0 ]; then
+    for profile in "${PROFILE_NAMES[@]}"; do
+        profile_path="$SCRIPT_PATH/disabled_plugins/${profile}_disabled_plugins.txt"
+        if [ -f "$profile_path" ]; then
+            # Append plugins from this profile to the array
+            mapfile -t profile_plugins < "$profile_path"
+            disabled_plugins+=("${profile_plugins[@]}")
+        else
+            echo "Warning: disabled plugins file not found for profile '$profile' at: $profile_path"
+        fi
+
+        enable_profile_path="$SCRIPT_PATH/disabled_plugins/${profile}_enable_plugins.txt"
+        if [ -f "$enable_profile_path" ]; then
+            ENABLE_PLUGINS_PATHS+=("$enable_profile_path")
+        fi
+    done
 else
-    DISABLED_PLUGINS_PATH="$PROJECT_PATH/disabled_plugins.txt"
-fi
-
-# Check if disabled_plugins.txt exists for current configuration
-if [ ! -f "$DISABLED_PLUGINS_PATH" ]; then
-    # If there are no disabled plugins provided, we need to use the default IDE enable_plugins.txt file
-    DEFAULT_DISABLED_PLUGINS_PATH="$IDE_CONFIGURATION_PATH/disabled_plugins.txt"
-    if [ ! -f "$DEFAULT_DISABLED_PLUGINS_PATH" ]; then
-        echo "No disabled_plugins.txt found. Searched in: $DEFAULT_DISABLED_PLUGINS_PATH and $DISABLED_PLUGINS_PATH"
-        exit 1
+    # Load default disabled plugins
+    if [ -f "$PROJECT_PATH/disabled_plugins.txt" ]; then
+        mapfile -t disabled_plugins < "$PROJECT_PATH/disabled_plugins.txt"
     fi
-    DISABLED_PLUGINS_PATH="$DEFAULT_DISABLED_PLUGINS_PATH"
 fi
 
-# Read disabled plugins into array
-mapfile -t disabled_plugins < "$DISABLED_PLUGINS_PATH"
+# Remove any duplicates
+if [ ${#disabled_plugins[@]} -gt 0 ]; then
+    disabled_plugins=($(printf '%s\n' "${disabled_plugins[@]}" | awk '!seen[$0]++'))
+fi
 
-# If enable_plugins.txt exists, remove those plugins from array
-if [ -n "$ENABLE_PLUGINS_PATH" ] && [ -f "$ENABLE_PLUGINS_PATH" ]; then
+# Remove plugins from disabled_plugins listed in any enable_plugins.txt files
+for enable_plugins_path in "${ENABLE_PLUGINS_PATHS[@]}"; do
     while IFS= read -r enable_plugin; do
         if [ -n "$enable_plugin" ]; then
             # Filter out the enabled plugin from the array
             disabled_plugins=("${disabled_plugins[@]/#$enable_plugin*/}")
         fi
-    done < "$ENABLE_PLUGINS_PATH"
-fi
+    done < "$enable_plugins_path"
+done
 
 # Remove empty elements and create final content
 disabled_plugins_content=$(printf '%s\n' "${disabled_plugins[@]}" | grep -v '^$')
@@ -113,7 +128,7 @@ disabled_plugins_content=$(printf '%s\n' "${disabled_plugins[@]}" | grep -v '^$'
 # Check if disabled_plugins.txt exists in IDE configuration directory
 CONFIG_PLUGINS_FILE="${IDE_CONFIGURATION_PATH/#\~/$HOME}/disabled_plugins.txt"
 if [ -f "$CONFIG_PLUGINS_FILE" ]; then
-    # Compare content instead of files
+    # Compare contents
     current_content=$(cat "$CONFIG_PLUGINS_FILE")
     if [ "$disabled_plugins_content" != "$current_content" ]; then
         # Content is different - create backup and write new content
@@ -136,4 +151,3 @@ if [ "$DRY_RUN" = true ]; then
 else
     "$IDE_PATH" "$PROJECT_PATH"
 fi
-

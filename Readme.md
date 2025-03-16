@@ -75,15 +75,15 @@ a specific plugin configuration. If you do not specify any profile launcher will
 
 ## Usage
 
-You can also use `launcher.sh` directly with additional options:
+You can use `launcher.sh` directly with additional options:
 
 ```bash
-./launcher.sh [profile_name] [-p project_path] [-i ide_path] [-D dry-run]
+./launcher.sh [profile_name...] [-p project_path] [-i ide_path] [-D dry-run]
 ```
 
 Parameters:
 
-- `profile_name`: (Optional) Name of the plugin profile to use
+- `profile_name`: (Optional) One or more profile names to use
 - `-p, --project`: Path to the project directory
 - `-i, --ide-path`: Custom path to PhpStorm executable
 - `-D, --dry-run`: Show commands that would be executed without making any changes
@@ -92,20 +92,44 @@ Examples:
 
 ```bash
 # Show what would happen without making changes
-./launcher.sh --dry-run                    # Preview default profile actions
-./launcher.sh profile_name --dry-run       # Preview profile-specific actions
+./launcher.sh --dry-run                                # Preview default profile actions
+./launcher.sh profile_name --dry-run                   # Preview single profile actions
+./launcher.sh profile_1 profile_2 --dry-run           # Preview multiple profiles actions
 ```
 
-If you provide a profile_name then `disabled_plugins.txt` file from project directory (if file exists there) will be
-ignored.
+If you provide any profile names then `disabled_plugins.txt` file from project directory (if file exists there) will be ignored.
 
 ### Enable plugins per project
 
-If you want to keep some plugins enabled only per project, you can create a file named `enable_plugins.txt` in the
-project directory. File should contain a list of plugins which will be removed from `disabled_plugins.txt` at the end of
-the process.
+You can enable specific plugins in two ways:
 
-It can be useful if you want to keep some plugins enabled only for specific project.
+1. Project-level: Create a file named `enable_plugins.txt` in the project directory.
+2. Profile-level: Create a file named `disabled_plugins/profile_name_enable_plugins.txt` for each profile that needs specific plugins enabled.
+
+The script will process all enable plugins files in the following order:
+1. Project's `enable_plugins.txt` (if exists)
+2. Profile-specific enable files (if they exist)
+
+This allows you to:
+- Keep some plugins enabled only for specific projects
+- Enable different plugins for different profiles
+- Combine multiple profiles to enable various plugin combinations
+
+Example:
+
+```bash
+# Structure:
+my_project/
+  enable_plugins.txt              # Project-specific enabled plugins
+disabled_plugins/
+  symfony_disabled_plugins.txt    # Symfony profile disabled plugins
+  symfony_enable_plugins.txt      # Symfony profile enabled plugins
+  vue_disabled_plugins.txt       # Vue profile disabled plugins
+  vue_enable_plugins.txt        # Vue profile enabled plugins
+
+# Usage:
+./launcher.sh symfony vue        # Combines both profiles' disabled and enabled plugins
+```
 
 ## Paths Configurations
 
